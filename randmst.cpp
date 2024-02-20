@@ -41,7 +41,7 @@ double EucDist(const Point& p1, const Point& p2) {
 
 
 // Graph Type 2 and 3
-// Function to build a random graph with vertices in a random dimension 
+// Function to build a random graph with vertices in N dimension 
 // ex: 3D corresponds to unit cube, 4D corresponds to unit hypercube, etc. 
 Graph buildRandGraph(int numOfVertices, int dimension) {
 
@@ -145,6 +145,35 @@ Graph kruskal(const Graph& graph) {
 
     return mst;
 }
+
+
+double k(int n) {
+    // TODO: Find a better function for k(n)
+    return 0.0;
+}
+// PRUNING THE TREES
+// To handle large number of vertices, we can prune a tree before running Kruskal's
+// The minimum spanning tree is extremely unlikely to use any edge of weight greater than k(n) for some function k(n)
+// We can estimate k(n) using small values of n, and then try to throw away edges of weight larger than k(n) as we increase the input size
+// throwing away too many edges may cause problems, but throwing away too few edges may not help at all
+Graph pruneTree(const Graph& graph, int n) {
+    // Output graph
+    Graph prunedGraph(graph.size());
+
+    // threshold is the value of k(n), edges with weight greater than threshold are pruned
+    double threshold = k(n);
+
+    // Iterate through the graph and add all edges to the pruned graph
+    for (int i = 0; i < graph.size(); ++i) {
+        for (const auto& edge : graph[i]) {
+            if (edge.second <= threshold) {
+                prunedGraph[i].push_back(edge);
+            }
+        }
+    }
+    return prunedGraph;
+}
+
 
 
 // Get the total weight of the minimum spanning tree; takes in the MST of graph G
