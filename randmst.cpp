@@ -3,17 +3,79 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <cassert>
+
+
+// Non-deterministic seed
+std::random_device rd; 
+
+// Mersenne Twister engine
+std::mt19937 gen(rd()); 
 
 // Define the adjacency list type for the graph
 // Outer index is the vertex, inner pair is the edge and its weight
 using Graph = std::vector<std::vector<std::pair<int, double>>>;
 
+// Define the Point type for the coordinates of the vertices
+using Point = std::vector<double>;
 
+Point generateRandomPoint(std::mt19937& gen, int dimension) {
+    std::uniform_real_distribution<double> dist(0.0, 1.0);
+    Point coordinates(dimension);
+    for (int i = 0; i < dimension; ++i) {
+        coordinates[i] = dist(gen);
+    }
+    return coordinates;
+}
+
+// Function to calculate the Euclidean distance between two points
+double EucDist(const Point& p1, const Point& p2) {
+    // Ensure the points are of the same dimension
+    assert(p1.size() == p2.size());
+    double sum = 0;
+    for (int i = 0; i < p1.size(); ++i) {
+        sum += (p1[i] - p2[i]) * (p1[i] - p2[i]);
+    }
+    return std::sqrt(sum);
+}
+
+
+// Graph Type 2 and 3
+// Function to build a random graph with vertices in a random dimension 
+// ex: 3D corresponds to unit cube, 4D corresponds to unit hypercube, etc. 
+Graph buildRandGraph(int numOfVertices, int dimension) {
+
+    // Initialize the output graph
+    Graph randGraph(numOfVertices);
+    std::uniform_real_distribution<double> dist(0.0, 1.0);
+
+    // Generate random points
+    std::vector<Point> points(numOfVertices);
+    for (int i = 0; i < numOfVertices; ++i) {
+        points[i] = generateRandomPoint(gen, dimension);
+    }
+
+    // Generate edges with weights equal to the Euclidean distance between the points
+    for (int i = 0; i < numOfVertices; ++i) {
+        for (int j = i + 1; j < numOfVertices; ++j) {
+            double weight = EucDist(points[i], points[j]);
+
+            // Add edge i->j
+            randGraph[i].push_back(std::make_pair(j, weight)); 
+
+            // Since undirected, also add j->i
+            randGraph[j].push_back(std::make_pair(i, weight)); 
+        }
+    }
+
+    return randGraph;
+}
+
+
+// Graph Type 1
 // Function to build a basic random graph with edges of random weights distributed N(0, 1)
 Graph buildBasicRandGraph(int numOfVertices) {
     Graph randGraph(numOfVertices);
-    std::random_device rd; // Non-deterministic seed
-    std::mt19937 gen(rd()); // Mersenne Twister engine
     std::uniform_real_distribution<double> dist(0.0, 1.0);
 
     // Generate edges with random weights
@@ -22,10 +84,10 @@ Graph buildBasicRandGraph(int numOfVertices) {
             double weight = dist(gen); 
 
             // Add edge i->j
-            randGraph[i].push_back({j, weight}); 
+            randGraph[i].push_back(std::make_pair(j, weight)); 
 
             // Since undirected, also add j->i
-            randGraph[j].push_back({i, weight}); 
+            randGraph[j].push_back(std::make_pair(i, weight)); 
         }
     }
 
@@ -40,7 +102,7 @@ Graph kruskal(const Graph& graph) {
     // Iterate through the graph and add all edges to the vector
     for (int i = 0; i < graph.size(); ++i) {
         for (const auto& edge : graph[i]) {
-            edges.push_back({edge.second, {i, edge.first}});
+            edges.push_back(std::make_pair(edge.second, std::make_pair(i, edge.first)));
         }
     }
 
@@ -75,8 +137,8 @@ Graph kruskal(const Graph& graph) {
 
         // If the parents are not the same, add the edge to the minimum spanning tree
         if (pu != pv) {
-            mst[u].push_back({v, weight});
-            mst[v].push_back({u, weight});
+            mst[u].push_back(std::make_pair(v, weight));
+            mst[v].push_back(std::make_pair(u, weight));
             parent[pu] = pv;
         }
     }
@@ -109,16 +171,24 @@ int main(int argc, char* argv[]) {
 
     double totalWeight = 0;
 
+    // Run the trials
     for (int i = 0; i < numtrials; ++i) {
-        Graph randGraph = buildBasicRandGraph(numpoints);
-        Graph mst = kruskal(randGraph);
-        double mstWeight = getMSTWeight(mst);
-        std::cout << "Trial: " << i+1 << std::endl;
-        std::cout << "weight = " << mstWeight << std::endl;
-        std::cout << std::endl;
-        totalWeight += mstWeight;
+        // Testing Graph Creation in n-dimensional space given by "dimension"
+        Graph graph;
+        if (dimension == 0) {
+            graph = buildBasicRandGraph(numpoints);
+        } else {
+            graph = buildRandGraph(numpoints, dimension);
+        }
+        Graph mst;
+        mst = kruskal(graph);
+        totalWeight += getMSTWeight(mst);
     }
-
+    double averageWeight = totalWeight / numtrials;
+    std::cout << "Number of Trials: " << numtrials << std::endl;
+    std::cout << "Number of Points: " << numpoints << std::endl;
+    std::cout << "Dimension: " << dimension << std::endl;
+    std::cout << "Average MST Weight: " << averageWeight << std::endl;
     //std::cout << numpoints << " " << numtrials << " " << dimension << " " << totalWeight / numtrials << std::endl;
 
     return 0;
