@@ -1,12 +1,10 @@
-// ProgSet 1 - Randomized Minimum Spanning Tree CS124
 #include <random>
 #include <iostream>
 #include <vector>
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 
-
-double k(int n);
 
 // Non-deterministic seed
 std::random_device rd; 
@@ -14,26 +12,97 @@ std::random_device rd;
 // Mersenne Twister engine
 std::mt19937 gen(rd()); 
 
-// Define the adjacency list type for the graph
-// Outer index is the vertex, inner pair is the edge and its weight
-using Graph = std::vector<std::vector<std::pair<int, double>>>;
+// Threshold function
+double k(int n, int dimension);
 
-// Define the Point type for the coordinates of the vertices
 using Point = std::vector<double>;
 
-Point generateRandomPoint(std::mt19937& gen, int dimension) {
-    std::uniform_real_distribution<double> dist(0.0, 1.0);
-    Point coordinates(dimension);
-    for (int i = 0; i < dimension; ++i) {
-        coordinates[i] = dist(gen);
+struct Edge {
+    int u; // Vertex u
+    int v; // Vertex v
+    double weight; // Weight of the edge
+
+    // Constructor
+    Edge(int _u, int _v, double _weight) : u(_u), v(_v), weight(_weight) {}
+
+    // Comparator for sorting
+    bool operator<(const Edge& e) const {
+        return weight < e.weight;
     }
-    return coordinates;
+};
+
+std::vector<Edge> graphEdges;
+
+// We need union-find to find the minimum spanning tree via Kruskal's
+class UnionFind {
+    private:
+        std::vector<int> parent;
+        std::vector<int> rank;
+
+    public:
+
+    // Constructor
+    UnionFind(int N): parent(N), rank(N, 0) {
+        for (int i = 0; i < N; ++i) {
+            parent[i] = i;
+        }
+    }
+
+    int find(int u) {
+        if (u != parent[u]) {
+            // Path compression
+            parent[u] = find(parent[u]);
+        }
+        return parent[u];
+    }
+
+    // Unite the sets that contain u and v
+    void unite(int u, int v) {
+        int pu = find(u);
+        int pv = find(v);
+
+        // If the parents are the same, then the vertices are already in the same set
+        if (pu == pv) {
+            return;
+        }
+
+        // Union by rank
+        // If the rank of pu is less than the rank of pv, then make pv the parent of pu
+        if (rank[pu] < rank[pv]) { 
+            parent[pu] = pv;
+        } else if (rank[pu] > rank[pv]) { // Rank of pv is less than rank of pu
+            parent[pv] = pu;
+        } else { // Rank of pv is equal to rank of pu
+            parent[pu] = pv;
+            rank[pv]++;
+        }
+    }
+};
+
+double k(int n, int dimension) {
+    if (dimension == 0) {
+        return 3*std::log(n) / n;
+    } else {
+        // TODO: Find a better function for k(n) in higher dimensions
+        return 0.0;
+    }
 }
 
-// Function to calculate the Euclidean distance between two points
-double EucDist(const Point& p1, const Point& p2) {
-    // Ensure the points are of the same dimension
+// Generate a random point in n-dimensional space
+Point generateRandomPoint(int dimension, std::mt19937& gen) {
+    std::uniform_real_distribution<double> dist(0.0, 1.0);
+    Point point(dimension);
+    for (int i = 0; i < dimension; ++i) {
+        point[i] = dist(gen);
+    }
+    return point;
+}
+
+// Euclidean distance between two points in n-dimensional space
+double EucDistance(const Point& p1, const Point& p2) {
+    // The points must have the same dimension
     assert(p1.size() == p2.size());
+
     double sum = 0;
     for (int i = 0; i < p1.size(); ++i) {
         sum += (p1[i] - p2[i]) * (p1[i] - p2[i]);
@@ -41,177 +110,90 @@ double EucDist(const Point& p1, const Point& p2) {
     return std::sqrt(sum);
 }
 
+// Function to build a random graph in n-dimensional space; we prune the edges that have a weight greater than k(n) as we build the graph
+// Returns: A vector of edges
+std::vector<Edge> buildRand_NDGraph(int numOfVertices, int dimension) {
+    std::vector<Edge> edges;
+    double threshold = k(numOfVertices, dimension);
 
-// Graph Type 2 and 3
-// Function to build a random graph with vertices in N dimension 
-// ex: 3D corresponds to unit cube, 4D corresponds to unit hypercube, etc. 
-Graph buildRandGraph(int numOfVertices, int dimension) {
-
-    // Initialize the output graph
-    Graph randGraph(numOfVertices);
-    std::uniform_real_distribution<double> dist(0.0, 1.0);
-
-    // Generate random points
-    std::vector<Point> points(numOfVertices);
-    for (int i = 0; i < numOfVertices; ++i) {
-        points[i] = generateRandomPoint(gen, dimension);
-    }
-
-    // Generate edges with weights equal to the Euclidean distance between the points
+    // Generate all possible edges with random weights
     for (int i = 0; i < numOfVertices; ++i) {
         for (int j = i + 1; j < numOfVertices; ++j) {
-            double weight = EucDist(points[i], points[j]);
-
-            // Add edge i->j
-            randGraph[i].push_back(std::make_pair(j, weight)); 
-
-            // Since undirected, also add j->i
-            randGraph[j].push_back(std::make_pair(i, weight)); 
-        }
-    }
-
-    return randGraph;
-}
-
-
-// Graph Type 1
-// Function to build a basic random graph with edges of random weights distributed N(0, 1)
-// For memory efficiency, we prune as we go, so we only store the edges with weights less than k(n)
-Graph buildBasicRandGraph(int numOfVertices) {
-
-    // Initialize the output graph
-    Graph randGraph(numOfVertices);
-    std::uniform_real_distribution<double> dist(0.0, 1.0);
-
-    // Generate edges with weights distributed N(0, 1)
-    for (int i = 0; i < numOfVertices; ++i) {
-        for (int j = i + 1; j < numOfVertices; ++j) {
-            double weight = dist(gen);
-
+            Point p1 = generateRandomPoint(dimension, gen);
+            Point p2 = generateRandomPoint(dimension, gen);
+            double weight = EucDistance(p1, p2);
+            
             // Prune the edge if the weight is greater than k(n)
-            // Prune as we go to save memory
-            if (weight < k(numOfVertices)) {
-                // Add edge i->j
-                randGraph[i].push_back(std::make_pair(j, weight)); 
-
-                // Since undirected, also add j->i
-                randGraph[j].push_back(std::make_pair(i, weight));
+            if (weight <= threshold) {
+                edges.emplace_back(i, j, weight);
+                edges.emplace_back(j, i, weight);
             }
         }
     }
-    return randGraph;
+    return edges;
 }
 
-// Use Kruskal's to find the minimum spanning tree
-Graph kruskal(const Graph& graph) {
+// For memory efficency, we prune the edges that have a weight greater than k(n) as we build the graph
+std::vector<Edge> buildBasicRandGraph(int numOfVertices) {
+    std::uniform_real_distribution<double> dist(0.0, 1.0);
+    std::vector<Edge> edges;
 
-    std::vector<std::pair<double, std::pair<int, int>>> edges;
+    // Generate all possible edges with random weights
+    for (int i = 0; i < numOfVertices; ++i) {
+        for (int j = i + 1; j < numOfVertices; ++j) {
 
-    // Iterate through the graph and add all edges to the vector
-    for (int i = 0; i < graph.size(); ++i) {
-        for (const auto& edge : graph[i]) {
-            edges.push_back(std::make_pair(edge.second, std::make_pair(i, edge.first)));
+            // Generate the random weight
+            double weight = dist(gen); 
+            double threshold = k(numOfVertices, 0);
+            // Prune the edge if the weight is greater than k(n)
+            if (weight <= threshold) {
+
+                // Add the edge i->j
+                edges.emplace_back(i, j, weight);
+
+                // Add the edge j->i
+                edges.emplace_back(j, i, weight);
+
+            }
         }
     }
+    return edges;
+}
 
-    // Sort the edges by weight
+// Kruskal's using union-find
+// Returns: The minimum spanning tree of graph G
+std::vector<Edge> kruskals(int numOfVertices, std::vector<Edge>& edges) {
+    std::vector<Edge> mst;
     std::sort(edges.begin(), edges.end());
 
-    Graph mst(graph.size());
+    UnionFind uf(numOfVertices);
 
-    // Create a vector to store the parent of each vertex
-    std::vector<int> parent(graph.size());
-
-    // Initialize the parent vector
-    for (int i = 0; i < graph.size(); ++i) {
-        parent[i] = i;
-    }
-
-    // Iterate through the edges
     for (const auto& edge : edges) {
-        double weight = edge.first;
-        int u = edge.second.first;
-        int v = edge.second.second;
+        int u = edge.u;
+        int v = edge.v;
+        double weight = edge.weight;
 
-        // Find the parent of u and v
-        int pu = u;
-        while (pu != parent[pu]) {
-            pu = parent[pu];
-        }
-        int pv = v;
-        while (pv != parent[pv]) {
-            pv = parent[pv];
-        }
-
-        // If the parents are not the same, add the edge to the minimum spanning tree
-        if (pu != pv) {
-            mst[u].push_back(std::make_pair(v, weight));
-            mst[v].push_back(std::make_pair(u, weight));
-            parent[pu] = pv;
+        if (uf.find(u) != uf.find(v)) {
+            mst.push_back(edge);
+            uf.unite(u, v);
         }
     }
 
     return mst;
 }
 
-
-double k(int n) {
-    // TODO: Find a better function for k(n)
-    return 3*std::log(n) / n;
-}
-
-// PRUNING THE TREES
-// To handle large number of vertices, we can prune a tree before running Kruskal's
-// The minimum spanning tree is extremely unlikely to use any edge of weight greater than k(n) for some function k(n)
-// We can estimate k(n) using small values of n, and then try to throw away edges of weight larger than k(n) as we increase the input size
-// throwing away too many edges may cause problems, but throwing away too few edges may not help at all
-Graph pruneTree(const Graph& graph, int n) {
-    // Output graph
-    Graph prunedGraph(graph.size());
-
-    // threshold is the value of k(n), edges with weight greater than threshold are pruned
-    double threshold = k(n);
-
-    // Iterate through the graph and add all edges to the pruned graph
-    for (int i = 0; i < graph.size(); ++i) {
-        for (const auto& edge : graph[i]) {
-            if (edge.second <= threshold) {
-                prunedGraph[i].push_back(edge);
-            }
-        }
-    }
-    return prunedGraph;
-}
-
-// Get largest edge weight in the MST of a graph
-// Takes in the MST of graph G
-double getLargestEdgeWeight(const Graph& mst) {
-    double largestWeight = 0;
-    for (int i = 0; i < mst.size(); ++i) {
-        for (const auto& edge : mst[i]) {
-            if (edge.second > largestWeight) {
-                largestWeight = edge.second;
-            }
-        }
-    }
-    return largestWeight;
-}
-
-
-
-// Get the total weight of the minimum spanning tree; takes in the MST of graph G
-double getMSTWeight(const Graph& mst) {
+double getMSTWeight(const std::vector<Edge>& mst) {
     double weight = 0;
-    for (int i = 0; i < mst.size(); ++i) {
-        for (const auto& edge : mst[i]) {
-            weight += edge.second;
-        }
+    for (const auto& edge : mst) {
+        weight += edge.weight;
     }
-    return weight / 2;
+    return weight;
 }
 
-// Usage: ./randmst 0 numpoints numtrials dimension
+
+// Usage: ./fasterrandmst 0 numpoints numtrials dimension
 int main(int argc, char* argv[]) {
+
     if (argc != 5) {
         std::cerr << "Usage: " << argv[0] << " 0 numpoints numtrials dimension" << std::endl;
         return 1;
@@ -221,30 +203,36 @@ int main(int argc, char* argv[]) {
     int numtrials = std::stoi(argv[3]);
     int dimension = std::stoi(argv[4]);
 
-    double totalLength = 0;
 
+    std::vector<Edge> graphEdges;
+    double totalLength = 0;
+    // Generate the edges for the graph
     // Run the trials
     for (int i = 0; i < numtrials; ++i) {
-        // Testing Graph Creation in n-dimensional space given by "dimension"
-        Graph graph;
-        Graph mst;
+        auto start_graph = std::chrono::high_resolution_clock::now();
         if (dimension == 0) {
-            graph = buildBasicRandGraph(numpoints);
-            mst = kruskal(graph);
+            graphEdges = buildBasicRandGraph(numpoints);
         } else {
-            graph = buildRandGraph(numpoints, dimension);
-            Graph prunedTree = pruneTree(graph, numpoints);
-            mst = kruskal(prunedTree);
+            graphEdges = buildRand_NDGraph(numpoints, dimension);
         }
+        auto end_graph = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed_graph = end_graph - start_graph;
 
-        double mstWeight = getMSTWeight(mst);
-        totalLength += mstWeight;
-        std::cout << "Trial " << i+1 << " MST Weight: " << mstWeight << std::endl;
+        auto start_kruskal = std::chrono::high_resolution_clock::now();
+        std::vector<Edge> mst = kruskals(numpoints, graphEdges);
+        auto end_kruskal = std::chrono::high_resolution_clock::now();
+
+        double weight = getMSTWeight(mst);
+        totalLength += weight;
+
+        // Trial Overview
+        std::cout << "Trial: " << i+1 << std::endl;
+        std::cout << "MST Weight: " << weight << std::endl;
+        std::cout << "Time to generate graph: " << elapsed_graph.count() << "s" << std::endl;
+        std::cout << "Time to run Kruskal's: " << std::chrono::duration<double>(end_kruskal - start_kruskal).count() << "s" << std::endl;
     }
     std::cout << std::endl;
-    std::cout << "Number of Vertices: " << numpoints << std::endl;
-    std::cout << "Number of Trials: " << numtrials << std::endl;
-    std::cout << "Dimension: " << dimension << std::endl;
     std::cout << "Average MST Weight: " << totalLength / numtrials << std::endl;
+
     return 0;
 }
