@@ -6,6 +6,8 @@
 #include <cassert>
 
 
+double k(int n);
+
 // Non-deterministic seed
 std::random_device rd; 
 
@@ -74,23 +76,29 @@ Graph buildRandGraph(int numOfVertices, int dimension) {
 
 // Graph Type 1
 // Function to build a basic random graph with edges of random weights distributed N(0, 1)
+// For memory efficiency, we prune as we go, so we only store the edges with weights less than k(n)
 Graph buildBasicRandGraph(int numOfVertices) {
+
+    // Initialize the output graph
     Graph randGraph(numOfVertices);
     std::uniform_real_distribution<double> dist(0.0, 1.0);
 
-    // Generate edges with random weights
+    // Generate edges with weights distributed N(0, 1)
     for (int i = 0; i < numOfVertices; ++i) {
         for (int j = i + 1; j < numOfVertices; ++j) {
-            double weight = dist(gen); 
+            double weight = dist(gen);
 
-            // Add edge i->j
-            randGraph[i].push_back(std::make_pair(j, weight)); 
+            // Prune the edge if the weight is greater than k(n)
+            // Prune as we go to save memory
+            if (weight < k(numOfVertices)) {
+                // Add edge i->j
+                randGraph[i].push_back(std::make_pair(j, weight)); 
 
-            // Since undirected, also add j->i
-            randGraph[j].push_back(std::make_pair(i, weight)); 
+                // Since undirected, also add j->i
+                randGraph[j].push_back(std::make_pair(i, weight));
+            }
         }
     }
-
     return randGraph;
 }
 
@@ -149,8 +157,9 @@ Graph kruskal(const Graph& graph) {
 
 double k(int n) {
     // TODO: Find a better function for k(n)
-    return 0.0;
+    return 3*std::log(n) / n;
 }
+
 // PRUNING THE TREES
 // To handle large number of vertices, we can prune a tree before running Kruskal's
 // The minimum spanning tree is extremely unlikely to use any edge of weight greater than k(n) for some function k(n)
@@ -172,6 +181,20 @@ Graph pruneTree(const Graph& graph, int n) {
         }
     }
     return prunedGraph;
+}
+
+// Get largest edge weight in the MST of a graph
+// Takes in the MST of graph G
+double getLargestEdgeWeight(const Graph& mst) {
+    double largestWeight = 0;
+    for (int i = 0; i < mst.size(); ++i) {
+        for (const auto& edge : mst[i]) {
+            if (edge.second > largestWeight) {
+                largestWeight = edge.second;
+            }
+        }
+    }
+    return largestWeight;
 }
 
 
@@ -198,27 +221,30 @@ int main(int argc, char* argv[]) {
     int numtrials = std::stoi(argv[3]);
     int dimension = std::stoi(argv[4]);
 
-    double totalWeight = 0;
+    double totalLength = 0;
 
     // Run the trials
     for (int i = 0; i < numtrials; ++i) {
         // Testing Graph Creation in n-dimensional space given by "dimension"
         Graph graph;
+        Graph mst;
         if (dimension == 0) {
             graph = buildBasicRandGraph(numpoints);
+            mst = kruskal(graph);
         } else {
             graph = buildRandGraph(numpoints, dimension);
+            Graph prunedTree = pruneTree(graph, numpoints);
+            mst = kruskal(prunedTree);
         }
-        Graph mst;
-        mst = kruskal(graph);
-        totalWeight += getMSTWeight(mst);
-    }
-    double averageWeight = totalWeight / numtrials;
-    std::cout << "Number of Trials: " << numtrials << std::endl;
-    std::cout << "Number of Points: " << numpoints << std::endl;
-    std::cout << "Dimension: " << dimension << std::endl;
-    std::cout << "Average MST Weight: " << averageWeight << std::endl;
-    //std::cout << numpoints << " " << numtrials << " " << dimension << " " << totalWeight / numtrials << std::endl;
 
+        double mstWeight = getMSTWeight(mst);
+        totalLength += mstWeight;
+        std::cout << "Trial " << i+1 << " MST Weight: " << mstWeight << std::endl;
+    }
+    std::cout << std::endl;
+    std::cout << "Number of Vertices: " << numpoints << std::endl;
+    std::cout << "Number of Trials: " << numtrials << std::endl;
+    std::cout << "Dimension: " << dimension << std::endl;
+    std::cout << "Average MST Weight: " << totalLength / numtrials << std::endl;
     return 0;
 }
