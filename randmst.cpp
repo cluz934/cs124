@@ -18,21 +18,12 @@ double k(int n, int dimension);
 
 using Point = std::vector<double>;
 
-struct Edge {
-    int u; // Vertex u
-    int v; // Vertex v
-    double weight; // Weight of the edge
+// Edge struct for the graph
+// Handles both 0D and higher dimensions
 
-    // Constructor
-    Edge(int _u, int _v, double _weight) : u(_u), v(_v), weight(_weight) {}
 
-    // Comparator for sorting
-    bool operator<(const Edge& e) const {
-        return weight < e.weight;
-    }
-};
+using Graph = std::vector<std::vector<std::pair<int, double>>>;
 
-std::vector<Edge> graphEdges;
 
 // We need union-find to find the minimum spanning tree via Kruskal's
 class UnionFind {
@@ -80,15 +71,16 @@ class UnionFind {
     }
 };
 
+// Threshold function
 double k(int n, int dimension) {
+
+    // TODO: Find a better function for k(n) in higher dimensions
     if (dimension == 0) {
         return 3*std::log2(n) / n;
     } else if (dimension == 2) {
-        // TODO: Find a better function for k(n) in higher dimensions
-        return 0.889*std::pow(n, -0.26)-0.137;
-        //return 2*std::log2(n) / n;
+        return 1;
     } else if (dimension == 3) {
-        return 6*std::log2(n) / n;
+        return 1;
     } else if (dimension == 4) {
         return 1;
     } else {
@@ -107,81 +99,101 @@ Point generateRandomPoint(int dimension, std::mt19937& gen) {
 }
 
 // Euclidean distance between two points in n-dimensional space
-double EucDistance(const Point& p1, const Point& p2) {
-    // The points must have the same dimension
-    assert(p1.size() == p2.size());
-
-    double sum = 0;
-    for (int i = 0; i < p1.size(); ++i) {
-        sum += (p1[i] - p2[i]) * (p1[i] - p2[i]);
-    }
-    return std::sqrt(sum);
+// Input: Two points and the dimension
+// Output: The Euclidean distance between the two points
+double EucDistance(const Point& p1, const Point& p2, int dimension) {
+        double sum = 0.0;
+        for (int i = 0; i < dimension; ++i) {
+            double diff = p1[i] - p2[i];
+            sum += diff * diff;
+        }
+        return std::sqrt(sum);
 }
+
+
+// Graph Type 1: Random Graph in 0 dimensions
+// For memory efficency, we prune the edges that have a weight greater than k(n) as we build the graph
+Graph buildBasicRandGraph(int numOfVertices) {
+
+    // Initialize the output graph
+    Graph randGraph(numOfVertices);
+    std::uniform_real_distribution<double> dist(0.0, 1.0);
+
+    // Generate edges with weights distributed N(0, 1)
+    for (int i = 0; i < numOfVertices; ++i) {
+        for (int j = i + 1; j < numOfVertices; ++j) {
+            double weight = dist(gen);
+
+            // Prune the edge if the weight is greater than k(n)
+            // Prune as we go to save memory
+            if (weight < k(numOfVertices, 0)) {
+                // Add edge i->j
+                randGraph[i].push_back(std::make_pair(j, weight)); 
+            }
+        }
+    }
+    return randGraph;
+}
+
 
 // Graph Type 2, 3: Random Graph in n dimensions (up to 4 dimensions)
 // Build a random graph in n-dimensional space; Prune edges that have a weight greater than k(n)
 // Output: A vector of edges
-std::vector<Edge> buildRand_NDGraph(int numOfVertices, int dimension) {
-    std::vector<Edge> edges;
-    double threshold = k(numOfVertices, dimension);
-    for (int i = 0; i < numOfVertices; ++i) {
-        Point p1 = generateRandomPoint(dimension, gen);
-        for (int j = i + 1; j < numOfVertices; ++j) {
-            Point p2 = generateRandomPoint(dimension, gen);
-            double weight = EucDistance(p1, p2);
-            if (weight <= threshold) {
-                edges.emplace_back(i, j, weight);
-                edges.emplace_back(j, i, weight);
-            }
-        }
-    }
-    return edges;
-}
+Graph buildRand_NDGraph(int numOfVertices, int dimension) {
 
-// Graph Type 1: Random Graph in 0 dimensions
-// For memory efficency, we prune the edges that have a weight greater than k(n) as we build the graph
-std::vector<Edge> buildBasicRandGraph(int numOfVertices) {
+    // Initialize the output graph
+    Graph randGraph(numOfVertices);
     std::uniform_real_distribution<double> dist(0.0, 1.0);
-    std::vector<Edge> edges;
 
-    // Generate all possible edges with random weights
+    // Generate random points
+    std::vector<Point> points(numOfVertices);
+    for (int i = 0; i < numOfVertices; ++i) {
+        points[i] = generateRandomPoint(dimension, gen);
+    }
+
+    // Generate edges with weights equal to the Euclidean distance between the points
     for (int i = 0; i < numOfVertices; ++i) {
         for (int j = i + 1; j < numOfVertices; ++j) {
+            double weight = EucDistance(points[i], points[j], dimension);
 
-            // Generate the random weight
-            double weight = dist(gen); 
-            double threshold = k(numOfVertices, 0);
-            // Prune the edge if the weight is greater than k(n)
-            if (weight <= threshold) {
-
-                // Add the edge i->j
-                edges.emplace_back(i, j, weight);
-
-                // Add the edge j->i
-                edges.emplace_back(j, i, weight);
-
+            if (weight < k(numOfVertices, dimension)) {
+                randGraph[i].push_back(std::make_pair(j, weight));
             }
         }
     }
-    return edges;
+
+    return randGraph;
 }
 
 
-// Kruskal's using union-find
-// Returns: The minimum spanning tree of graph G
-std::vector<Edge> kruskals(int numOfVertices, std::vector<Edge>& edges) {
-    std::vector<Edge> mst;
-    std::sort(edges.begin(), edges.end());
+// Kruskal's algorithm to find the minimum spanning tree using our UnionFind data structure and our edge struct
+Graph kruskals(int numOfVertices, const Graph& graph) {
+    // Initialize the output graph
+    Graph mst(numOfVertices);
 
+    // Initialize the UnionFind data structure
     UnionFind uf(numOfVertices);
 
+    // Sort the edges by weight
+    std::vector<std::pair<int, std::pair<int, double>>> edges;
+    for (int i = 0; i < numOfVertices; ++i) {
+        for (const auto& edge : graph[i]) {
+            edges.push_back(std::make_pair(i, edge));
+        }
+    }
+    std::sort(edges.begin(), edges.end(), [](const auto& a, const auto& b) {
+        return a.second.second < b.second.second;
+    });
+
+    // Run Kruskal's algorithm
     for (const auto& edge : edges) {
-        int u = edge.u;
-        int v = edge.v;
-        double weight = edge.weight;
+        int u = edge.first;
+        int v = edge.second.first;
+        double weight = edge.second.second;
 
         if (uf.find(u) != uf.find(v)) {
-            mst.push_back(edge);
+            mst[u].push_back(std::make_pair(v, weight));
+            mst[v].push_back(std::make_pair(u, weight));
             uf.unite(u, v);
         }
     }
@@ -189,20 +201,26 @@ std::vector<Edge> kruskals(int numOfVertices, std::vector<Edge>& edges) {
     return mst;
 }
 
-double getMSTWeight(const std::vector<Edge>& mst) {
+double getMSTWeight(const Graph& mst) {
     double weight = 0;
-    for (const auto& edge : mst) {
-        weight += edge.weight;
+    for (int i = 0; i < mst.size(); ++i) {
+        for (const auto& edge : mst[i]) {
+            weight += edge.second;
+        }
     }
-    return weight;
+
+    // We divide by 2 because the MST is undirected
+    return weight / 2;
 }
 
-// Finds the longest edge in the MST
-double getLongestEdge(const std::vector<Edge>& mst) {
+// Finds longest edge in MST
+double getLongestEdge(const Graph& mst) {
     double longest = 0;
-    for (const auto& edge : mst) {
-        if (edge.weight > longest) {
-            longest = edge.weight;
+    for (int i = 0; i < mst.size(); ++i) {
+        for (const auto& edge : mst[i]) {
+            if (edge.second > longest) {
+                longest = edge.second;
+            }
         }
     }
     return longest;
@@ -225,23 +243,23 @@ int main(int argc, char* argv[]) {
     double longestEdge = 0;
     // Generate the edges for the graph and run the trials
     for (int i = 0; i < numtrials; ++i) {
-        std::vector<Edge> graphEdges;
+        Graph trial_graph;
 
         auto start_graph = std::chrono::high_resolution_clock::now();
 
     
         if (dimension == 0) {
-            graphEdges = buildBasicRandGraph(numpoints);
+            trial_graph = buildBasicRandGraph(numpoints);
         } else {
             // Replace buildRand_NDGraph with buildRand_NDGraph_MT for multithreaded execution
-            graphEdges = buildRand_NDGraph(numpoints, dimension);
+            trial_graph = buildRand_NDGraph(numpoints, dimension);
         }
 
         auto end_graph = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed_graph = end_graph - start_graph;
 
         auto start_kruskal = std::chrono::high_resolution_clock::now();
-        std::vector<Edge> mst = kruskals(numpoints, graphEdges);
+        Graph mst = kruskals(numpoints, trial_graph);
         auto end_kruskal = std::chrono::high_resolution_clock::now();
 
         double weight = getMSTWeight(mst);
