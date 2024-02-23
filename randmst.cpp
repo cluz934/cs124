@@ -4,7 +4,8 @@
 #include <algorithm>
 #include <cassert>
 #include <chrono>
-
+#include <future>
+#include <thread>
 
 // Non-deterministic seed
 std::random_device rd; 
@@ -81,10 +82,17 @@ class UnionFind {
 
 double k(int n, int dimension) {
     if (dimension == 0) {
-        return 3*std::log(n) / n;
-    } else {
+        return 3*std::log2(n) / n;
+    } else if (dimension == 2) {
         // TODO: Find a better function for k(n) in higher dimensions
-        return 0.0;
+        return 0.889*std::pow(n, -0.26)-0.137;
+        //return 2*std::log2(n) / n;
+    } else if (dimension == 3) {
+        return 6*std::log2(n) / n;
+    } else if (dimension == 4) {
+        return 1;
+    } else {
+        return 1;
     }
 }
 
@@ -110,20 +118,17 @@ double EucDistance(const Point& p1, const Point& p2) {
     return std::sqrt(sum);
 }
 
-// Function to build a random graph in n-dimensional space; we prune the edges that have a weight greater than k(n) as we build the graph
-// Returns: A vector of edges
+// Graph Type 2, 3: Random Graph in n dimensions (up to 4 dimensions)
+// Build a random graph in n-dimensional space; Prune edges that have a weight greater than k(n)
+// Output: A vector of edges
 std::vector<Edge> buildRand_NDGraph(int numOfVertices, int dimension) {
     std::vector<Edge> edges;
     double threshold = k(numOfVertices, dimension);
-
-    // Generate all possible edges with random weights
     for (int i = 0; i < numOfVertices; ++i) {
+        Point p1 = generateRandomPoint(dimension, gen);
         for (int j = i + 1; j < numOfVertices; ++j) {
-            Point p1 = generateRandomPoint(dimension, gen);
             Point p2 = generateRandomPoint(dimension, gen);
             double weight = EucDistance(p1, p2);
-            
-            // Prune the edge if the weight is greater than k(n)
             if (weight <= threshold) {
                 edges.emplace_back(i, j, weight);
                 edges.emplace_back(j, i, weight);
@@ -133,6 +138,7 @@ std::vector<Edge> buildRand_NDGraph(int numOfVertices, int dimension) {
     return edges;
 }
 
+// Graph Type 1: Random Graph in 0 dimensions
 // For memory efficency, we prune the edges that have a weight greater than k(n) as we build the graph
 std::vector<Edge> buildBasicRandGraph(int numOfVertices) {
     std::uniform_real_distribution<double> dist(0.0, 1.0);
@@ -159,6 +165,7 @@ std::vector<Edge> buildBasicRandGraph(int numOfVertices) {
     }
     return edges;
 }
+
 
 // Kruskal's using union-find
 // Returns: The minimum spanning tree of graph G
@@ -190,8 +197,19 @@ double getMSTWeight(const std::vector<Edge>& mst) {
     return weight;
 }
 
+// Finds the longest edge in the MST
+double getLongestEdge(const std::vector<Edge>& mst) {
+    double longest = 0;
+    for (const auto& edge : mst) {
+        if (edge.weight > longest) {
+            longest = edge.weight;
+        }
+    }
+    return longest;
+}
 
-// Usage: ./fasterrandmst 0 numpoints numtrials dimension
+
+// Usage: ./randmst 0 numpoints numtrials dimension
 int main(int argc, char* argv[]) {
 
     if (argc != 5) {
@@ -203,18 +221,22 @@ int main(int argc, char* argv[]) {
     int numtrials = std::stoi(argv[3]);
     int dimension = std::stoi(argv[4]);
 
-
-    std::vector<Edge> graphEdges;
     double totalLength = 0;
-    // Generate the edges for the graph
-    // Run the trials
+    double longestEdge = 0;
+    // Generate the edges for the graph and run the trials
     for (int i = 0; i < numtrials; ++i) {
+        std::vector<Edge> graphEdges;
+
         auto start_graph = std::chrono::high_resolution_clock::now();
+
+    
         if (dimension == 0) {
             graphEdges = buildBasicRandGraph(numpoints);
         } else {
+            // Replace buildRand_NDGraph with buildRand_NDGraph_MT for multithreaded execution
             graphEdges = buildRand_NDGraph(numpoints, dimension);
         }
+
         auto end_graph = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed_graph = end_graph - start_graph;
 
@@ -223,16 +245,30 @@ int main(int argc, char* argv[]) {
         auto end_kruskal = std::chrono::high_resolution_clock::now();
 
         double weight = getMSTWeight(mst);
+        double longest = getLongestEdge(mst);
+
+        longestEdge += longest;
         totalLength += weight;
 
         // Trial Overview
-        std::cout << "Trial: " << i+1 << std::endl;
-        std::cout << "MST Weight: " << weight << std::endl;
-        std::cout << "Time to generate graph: " << elapsed_graph.count() << "s" << std::endl;
-        std::cout << "Time to run Kruskal's: " << std::chrono::duration<double>(end_kruskal - start_kruskal).count() << "s" << std::endl;
+        // std::cout << "Trial: " << i + 1 << std::endl;
+        // std::cout << "MST Weight: " << weight << std::endl;
+        // std::cout << "Longest Edge: " << longest << std::endl;
+        // std::cout << "Time to generate graph: " << elapsed_graph.count() << "s" << std::endl;
+        // std::cout << "Time to run Kruskal's: " << std::chrono::duration<double>(end_kruskal - start_kruskal).count() << "s" << std::endl;
+        // std::cout << std::endl;
     }
-    std::cout << std::endl;
-    std::cout << "Average MST Weight: " << totalLength / numtrials << std::endl;
+
+        // std::cout << "Number of Trials: " << numtrials << std::endl;
+        // std::cout << "Number of Vertices: " << numpoints << std::endl;
+        // std::cout << "Dimension: " << dimension << std::endl;
+        // std::cout << "Average MST Weight: " << totalLength / numtrials << std::endl;
+        // std::cout << "Average Longest Edge: " << longestEdge / numtrials << std::endl;
+    
+    // Output format: average numpoints numtrials dimension
+    // where average is the average minimum spanning tree weight over the trials.
+
+    std::cout << totalLength / numtrials << " " << numpoints << " " << numtrials << " " << dimension << std::endl;
 
     return 0;
 }

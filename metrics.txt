@@ -1,0 +1,13 @@
+cluz934@LAPTOP-5LMJOL73:/mnt/c/Users/cluz9/.vscode/cs124$ ./randmst 0 262144 1 2
+Trial: 1                                                                                                             
+MST Weight: 0.138076                                                                                                 
+Longest Edge: 0.000123522                                                                                            
+Time to generate graph: 13370.5s                                                                                     
+Time to run Kruskal's: 0.00119175s  
+
+
+Number of Trials: 1                                                                                                  
+Number of Vertices: 262144                                                                                           
+Dimension: 2                                                                                                         
+Average MST Weight: 0.138076                                                                                         
+Average Longest Edge: 0.000123522
